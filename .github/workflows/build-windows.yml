@@ -79,6 +79,16 @@ jobs:
               test -n "$HOME"
               test -d "$HOME"
               git config --global --add safe.directory /vlc
+              # Fix Qt Shader Tools 6.8.3 download URL
+QT_RULES="/vlc/contrib/src/qtshadertools/rules.mak"
+
+if [ -f "$QT_RULES" ]; then
+    sed -i \
+      's|https://download.qt.io/official_releases/qt/6.8/|https://download.qt.io/archive/qt/6.8/|g' \
+      "$QT_RULES"
+fi
+
+grep -n "qtshadertools-everywhere-src-6.8.3" "$QT_RULES"
               export CI_JOB_NAME=win64
               export TRIPLET=x86_64-w64-mingw32
               export VLC_CONTRIB_SHA="$(extras/ci/get-contrib-sha.sh win64)"
