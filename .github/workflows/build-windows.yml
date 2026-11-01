@@ -65,40 +65,65 @@ jobs:
           python3 "$GITHUB_WORKSPACE/vlc/dolbyvision/verify_dovi_sample.py" "$SAMPLE" \
             | tee "$SAMPLE_DIR/dolby-vision-sample-validation.txt"
 
+
       - name: Build VLC Windows x64 in official VideoLAN CI image
         shell: bash
         run: |
           set -euxo pipefail
           chmod -R a+rwX "$GITHUB_WORKSPACE/vlc"
+
           docker run --rm \
             -v "$GITHUB_WORKSPACE/vlc:/vlc" \
             -w /vlc \
             registry.videolan.org/vlc-debian-win64-posix:20260611225331 \
-            bash -lc '
-              set -euxo pipefail
-              test -n "$HOME"
-              test -d "$HOME"
-              git config --global --add safe.directory /vlc
-              # Fix Qt Shader Tools 6.8.3 download URL
-QT_RULES="/vlc/contrib/src/qtshadertools/rules.mak"
+            bash -s <<'CONTAINER_SCRIPT'
 
-if [ -f "$QT_RULES" ]; then
-    sed -i \
-      's|https://download.qt.io/official_releases/qt/6.8/|https://download.qt.io/archive/qt/6.8/|g' \
-      "$QT_RULES"
-fi
+          set -euxo pipefail
 
-grep -n "qtshadertools-everywhere-src-6.8.3" "$QT_RULES"
-              export CI_JOB_NAME=win64
-              export TRIPLET=x86_64-w64-mingw32
-              export VLC_CONTRIB_SHA="$(extras/ci/get-contrib-sha.sh win64)"
-              export VLC_PREBUILT_CONTRIBS_URL="https://artifacts.videolan.org/vlc/win64/vlc-contrib-${TRIPLET}-${VLC_CONTRIB_SHA}.tar.zst"
-              if ! extras/ci/check-url.sh "$VLC_PREBUILT_CONTRIBS_URL"; then
-                unset VLC_PREBUILT_CONTRIBS_URL
-              fi
-              extras/package/win32/build.sh -a x86_64 -p -r
-              make -C win64 package-win32-exe
-            '
+          test -n "$HOME"
+          test -d "$HOME"
+
+          git config --global --add safe.directory /vlc
+
+          # Fix Qt Shader Tools 6.8.3 download URLs
+          QT_RULES="/vlc/contrib/src/qtshadertools/rules.mak"
+
+          if [ ! -f "$QT_RULES" ]; then
+            echo "ERROR: Qt Shader Tools rules.mak not found"
+            exit 1
+          fi
+
+          sed -i \
+            -e 's|https://downloads.videolan.org/pub/contrib/qtshadertools/|https://download.qt.io/archive/qt/6.8/6.8.3/submodules/|g' \
+            -e 's|https://download.qt.io/official_releases/qt/6.8/6.8.3/submodules/|https://download.qt.io/archive/qt/6.8/6.8.3/submodules/|g' \
+            "$QT_RULES"
+
+          echo "=== Qt Shader Tools download configuration ==="
+          grep -n "qtshadertools-everywhere-src-6.8.3" "$QT_RULES"
+
+          export CI_JOB_NAME=win64
+          export TRIPLET=x86_64-w64-mingw32
+
+          export VLC_CONTRIB_SHA="$(extras/ci/get-contrib-sha.sh win64)"
+
+          export VLC_PREBUILT_CONTRIBS_URL="https://artifacts.videolan.org/vlc/win64/vlc-contrib-${TRIPLET}-${VLC_CONTRIB_SHA}.tar.zst"
+
+          if ! extras/ci/check-url.sh "$VLC_PREBUILT_CONTRIBS_URL"; then
+            echo "Prebuilt contrib unavailable. Building dependencies from source."
+            unset VLC_PREBUILT_CONTRIBS_URL
+          fi
+
+          echo "=== Starting VLC Windows x64 build ==="
+
+          extras/package/win32/build.sh -a x86_64 -p -r
+
+          echo "=== Creating Windows installer ==="
+
+          make -C win64 package-win32-exe
+
+          echo "=== Build completed ==="
+
+          CONTAINER_SCRIPT
 
       - name: Smoke-test Dolby Vision popup with the built VLC
         shell: bash
